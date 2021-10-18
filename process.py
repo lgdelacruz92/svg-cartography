@@ -43,3 +43,22 @@ if __name__ == '__main__':
         < fl-counties-topo.ndjson \
         > fl-counties-topo.svg
     ''')
+    os.system("curl 'https://api.census.gov/data/2019/acs/acs5/profile?get=DP05_0006PE&for=county:*&in=state:12' -o census-20-to-24.json")
+    os.system('''
+    ndjson-cat census-20-to-24.json \
+        | ndjson-split 'd.slice(1)' \
+        | ndjson-map '{id: d[2], percent: d[0]}' \
+        > census-20-to-24.ndjson
+    ''')
+    os.system('''
+        ndjson-join 'd.id' \
+            fl-counties-topo.ndjson \
+            census-20-to-24.ndjson \
+            > fl-counties-census-join.ndjson
+    ''')
+    os.system('python3 main.py fl-counties-census-join.ndjson > fl-counties-census-color.ndjson')
+    os.system('''
+    geo2svg -n --stroke none -p 1 -w 960 -h 960 \
+        < fl-counties-census-color.ndjson \
+        > fl-counties-census-color.svg
+    ''')
