@@ -4,6 +4,7 @@
         "fips",
         "ndjson",
         "topo",
+        "topojson",
         "topoquantize",
         "toposimplify"
     ],

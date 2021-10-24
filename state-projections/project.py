@@ -27,11 +27,26 @@ def get_projections():
         projections.append((state_planes[i].text, projection))
     return projections
 
-def download_shape_file(year, fips, name):
-    new_name = name.replace(' ', '')
-    os.system(f'mkdir {new_name}')
-    os.system(f'cd {new_name} && curl "https://www2.census.gov/geo/tiger/GENZ{year}/shp/cb_{year}_{fips}_tract_500k.zip" -o {new_name}-tract.zip')
-    os.system(f'cd {new_name} && unzip {new_name}-tract.zip')
+def download_shape_files():
+    year = 2019
+
+    # get all states
+    all_states = get_all_states()
+
+    # associate states with projections
+    projections = get_projections()
+    merged_projections = merge_projection_states(projections, all_states)
+
+    already_downloaded = set()
+    for row in merged_projections:
+        name = row[0]
+        if name not in already_downloaded:
+            already_downloaded.add(name)
+            fips = row[1]
+            new_name = name.replace(' ', '')
+            os.system(f'mkdir {new_name}')
+            os.system(f'cd {new_name} && curl "https://www2.census.gov/geo/tiger/GENZ{year}/shp/cb_{year}_{fips}_tract_500k.zip" -o {new_name}-tract.zip')
+            os.system(f'cd {new_name} && unzip {new_name}-tract.zip')
 
 def create_topojson_and_geojson():
     year = 2019
@@ -113,12 +128,6 @@ def create_topojson_and_geojson():
                 < %s > %s
         ''' % (outpath(f'geo-county-min-topojson-{i}.json'), outpath(f'geo-county-min-{i}.json')))
 
-    # clean up (comment out for debugging)
-    os.system('rm *.ndjson')
-    os.system('rm *topo-*.json')
-    os.system('rm *albers*.json')
-    os.system('rm geoData.json')
-
 def get_all_states():
     state_names = []
     with open('state-fips.csv', 'r') as state_file:
@@ -139,3 +148,4 @@ def merge_projection_states(projections, all_states):
 
 if __name__ == '__main__':
     create_topojson_and_geojson()
+    # download_shape_files()

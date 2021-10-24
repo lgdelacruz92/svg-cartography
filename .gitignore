@@ -16,3 +16,4 @@ package-lock.json
 *geo*.json
 *geo*.ndjson
 
+*.DS_Store
