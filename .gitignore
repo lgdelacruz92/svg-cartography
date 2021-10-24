@@ -10,4 +10,9 @@ package-lock.json
 *.zip
 *.txt
 *.html
+*.svg
+*albers*.json
+*geoData*.json
+*geo*.json
+*geo*.ndjson
 
