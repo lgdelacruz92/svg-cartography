@@ -4,8 +4,8 @@ from bs4 import BeautifulSoup
 import requests
 
 parser = argparse.ArgumentParser(description='Project state')
-parser.add_argument('-y', '--year', help='Year of the census.',required=True)
-parser.add_argument('-f', '--fips', help='State fips.',required=True)
+# parser.add_argument('-y', '--year', help='Year of the census.',required=True)
+# parser.add_argument('-f', '--fips', help='State fips.',required=True)
 
 args = parser.parse_args()
 
@@ -24,73 +24,94 @@ def get_projections():
     projections = []
     for i in range(0, len(state_planes), 2):
         projection = state_planes[i+1].text.replace('var projection = ', '').replace('\n','').replace(' ', '').replace(';','')
-        projections.append(projection)
-    return (state_planes[i].text, projections)
+        projections.append((state_planes[i].text, projection))
+    return projections
 
-def create_topojson_and_geojson(year, fips):
-    os.system(f'npx shp2json cb_{year}_{fips}_tract_500k.shp -o geoData.json')
+def download_shape_file(year, fips, name):
+    new_name = name.replace(' ', '')
+    os.system(f'mkdir {new_name}')
+    os.system(f'cd {new_name} && curl "https://www2.census.gov/geo/tiger/GENZ{year}/shp/cb_{year}_{fips}_tract_500k.zip" -o {new_name}-tract.zip')
+    os.system(f'cd {new_name} && unzip {new_name}-tract.zip')
 
-    # TODO: this needs adjusting to be general
-    alaska_projections = get_projections()
+def create_topojson_and_geojson():
+    year = 2019
 
-    for i, projection in enumerate(alaska_projections):
-        print('processing', i)
-        os.system(f'geoproject "{projection}.fitSize([960, 960], d)" < geoData.json > geo-albers-{i}.json')
+    # get all states
+    all_states = get_all_states()
+
+    # associate states with projections
+    projections = get_projections()
+    merged_projections = merge_projection_states(projections, all_states)
+
+    for i, row in enumerate(merged_projections):
+        name = row[0]
+        new_name = name.replace(' ', '')
+        print(f'processing {new_name}')
+        fips = row[1]
+        projection = row[3]
+
+        outpath = lambda file_name : f'{new_name}/{file_name}'
+
+        # start geo data unoptimized
+        os.system(f'cd {new_name} && npx shp2json cb_{year}_{fips}_tract_500k.shp -o geoData.json')
+
+        # get albers
+        os.system(f'geoproject "{projection}.fitSize([960, 960], d)" < {outpath("geoData.json")} > {outpath("geo-albers.json")}')
 
         os.system('''
             ndjson-split 'd.features' \
-                < geo-albers-%d.json \
-                > geo-albers-%d.ndjson
-        ''' % (i, i))
+                < %s \
+                > %s
+        ''' % (outpath("geo-albers.json"), outpath("geo-albers.ndjson")))
 
         os.system('''
             ndjson-map 'd.id = d.properties.GEOID.slice(0, 5), d' \
-                < geo-albers-%d.ndjson \
-                > geo-albers-id-%d.ndjson
-        ''' % (i, i))
+                < %s \
+                > %s
+        ''' % (outpath("geo-albers.ndjson"), outpath("geo-albers-id.ndjson")))
 
         os.system('''
             ndjson-reduce \
-                < geo-albers-id-%d.ndjson \
+                < %s \
                 | ndjson-map '{type: "FeatureCollection", features: d}' \
-                > geo-albers-%d.json
-        ''' % (i, i))
+                > %s
+        ''' % (outpath("geo-albers-id.ndjson"), outpath("geo-albers.json")))
 
         os.system('''
             npx ndjson-split 'd.features' \
-                < geo-albers-%d.json \
-                > geo-albers-%d.ndjson
-        ''' % (i, i))
+                < %s \
+                > %s
+        ''' % (outpath("geo-albers.json"), outpath("geo-albers.ndjson")))
 
         os.system('''
             geo2topo -n \
-                tracts=geo-albers-%d.ndjson \
-                > geo-tracts-topo-%d.json
-            ''' % (i, i)
+                tracts=%s \
+                > %s
+            ''' % (outpath("geo-albers.ndjson"), outpath("geo-tracts-topo.json"))
         )
 
         os.system('''
             toposimplify -p 1 -f \
-                < geo-tracts-topo-%d.json \
-                > geo-simple-topo-%d.json
-        ''' % (i, i))
+                < %s \
+                > %s
+        ''' % (outpath("geo-tracts-topo.json"), outpath("geo-simple-topo.json")))
 
         os.system('''
             topoquantize 1e5 \
-                < geo-simple-topo-%d.json \
-                > geo-quantized-topo-%d.json
-        ''' % (i,i))
+                < %s \
+                > %s
+        ''' % (outpath("geo-simple-topo.json"),outpath("geo-quantized-topo.json")))
 
         os.system('''
             topomerge -k 'd.id' counties=tracts \
-                < geo-quantized-topo-%d.json \
-                > geo-county-min-topojson-%d.json
-        ''' % (i, i))
+                < %s \
+                > %s
+        ''' % (outpath("geo-quantized-topo.json"), outpath(f'geo-county-min-topojson-{i}.json')))
 
         os.system('''
             topo2geo counties=- \
-                < geo-county-min-topojson-%d.json > geo-county-min-%d.json
-        ''' % (i, i))
+                < %s > %s
+        ''' % (outpath(f'geo-county-min-topojson-{i}.json'), outpath(f'geo-county-min-{i}.json')))
 
     # clean up (comment out for debugging)
     os.system('rm *.ndjson')
@@ -98,34 +119,23 @@ def create_topojson_and_geojson(year, fips):
     os.system('rm *albers*.json')
     os.system('rm geoData.json')
 
+def get_all_states():
+    state_names = []
+    with open('state-fips.csv', 'r') as state_file:
+        for line in state_file:
+            state_data = line.replace('\n','').split(',')
+            fips = state_data[3] if len(state_data[3]) == 2 else f'0{state_data[3]}'
+            state_names.append((state_data[0], fips))
+    return state_names
+
+def merge_projection_states(projections, all_states):
+    merged_projections = []
+    for state in all_states:
+        for projection in projections:
+            if state[0] in projection[0]:
+                merged_projections.append([state[0], state[1], projection[0], projection[1]])
+    return merged_projections
+
+
 if __name__ == '__main__':
-    pass
-    # os.system('''
-    # ndjson-split 'd.features' \
-    #     < fl-counties-topo.json \
-    #     > fl-counties-topo.ndjson
-    # ''')
-    # os.system('''
-    # geo2svg -n -p 1 -w 960 -h 960 \
-    #     < fl-counties-topo.ndjson \
-    #     > fl-counties-topo.svg
-    # ''')
-    # os.system("curl 'https://api.census.gov/data/2019/acs/acs5/profile?get=DP05_0006PE&for=county:*&in=state:12' -o census-20-to-24.json")
-    # os.system('''
-    # ndjson-cat census-20-to-24.json \
-    #     | ndjson-split 'd.slice(1)' \
-    #     | ndjson-map '{id: d[1] + d[2], percent: d[0]}' \
-    #     > census-20-to-24.ndjson
-    # ''')
-    # os.system('''
-    #     ndjson-join 'd.id' \
-    #         fl-counties-topo.ndjson \
-    #         census-20-to-24.ndjson \
-    #         > fl-counties-census-join.ndjson
-    # ''')
-    # os.system('python3 main.py fl-counties-census-join.ndjson > fl-counties-census-color.ndjson')
-    # os.system('''
-    # geo2svg -n --stroke none -p 1 -w 960 -h 960 \
-    #     < fl-counties-census-color.ndjson \
-    #     > fl-counties-census-color.svg
-    # ''')
+    create_topojson_and_geojson()

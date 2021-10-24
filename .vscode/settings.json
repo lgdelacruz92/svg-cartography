@@ -2,7 +2,10 @@
     "cSpell.words": [
         "filein",
         "fips",
-        "ndjson"
+        "ndjson",
+        "topo",
+        "topoquantize",
+        "toposimplify"
     ],
     "liveServer.settings.port": 5501,
     "python.pythonPath": "/usr/local/bin/python3",
