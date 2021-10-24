@@ -1,6 +1,8 @@
 {
     "cSpell.words": [
-        "filein"
+        "filein",
+        "fips",
+        "ndjson"
     ],
     "liveServer.settings.port": 5501,
     "python.pythonPath": "/usr/local/bin/python3",
