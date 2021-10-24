@@ -1,5 +1,8 @@
 {
     "cSpell.words": [
         "filein"
-    ]
+    ],
+    "liveServer.settings.port": 5501,
+    "python.pythonPath": "/usr/local/bin/python3",
+    "python.autoComplete.extraPaths": ["/usr/local/bin/python3"]
 }

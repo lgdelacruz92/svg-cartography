@@ -3,11 +3,31 @@ import os
 if __name__ == '__main__':
     os.system('npx shp2json cb_2019_12_tract_500k.shp -o fl.json')
     os.system("geoproject 'd3.geoConicConformal().parallels([29 + 35 / 60, 30 + 45 / 60]).rotate([84 + 30 / 60, 0]).fitSize([960, 960], d)' < fl.json > fl-albers.json")
+
+    os.system('''
+        ndjson-split 'd.features' \
+            < fl-albers.json \
+            > fl-albers.ndjson
+    ''')
+    os.system('''
+        ndjson-map 'd.id = d.properties.GEOID.slice(0, 5), d' \
+            < fl-albers.ndjson \
+            > fl-albers-id.ndjson
+    ''')
+
+    os.system('''
+    ndjson-reduce \
+        < fl-albers-id.ndjson \
+        | ndjson-map '{type: "FeatureCollection", features: d}' \
+        > fl-albers.json
+    ''')
+
     os.system('''
     npx ndjson-split 'd.features' \
         < fl-albers.json \
         > fl-albers.ndjson
     ''')
+
     os.system('''
     geo2topo -n \
         tracts=fl-albers.ndjson \
@@ -20,15 +40,18 @@ if __name__ == '__main__':
         > fl-simple-topo.json
     ''')
     os.system('''
-    topoquantize 1e5 \
-        < fl-simple-topo.json \
-        > fl-quantized-topo.json
+        topoquantize 1e5 \
+            < fl-simple-topo.json \
+            > fl-quantized-topo.json
     ''')
+
     os.system('''
-    topomerge -k 'd.properties.GEOID.slice(2, 5)' counties=tracts \
+    topomerge -k 'd.id' counties=tracts \
         < fl-quantized-topo.json \
         > fl-merge-topo.json
     ''')
+
+
     os.system('''
     topo2geo counties=- \
         < fl-merge-topo.json > fl-counties-topo.json
@@ -47,7 +70,7 @@ if __name__ == '__main__':
     os.system('''
     ndjson-cat census-20-to-24.json \
         | ndjson-split 'd.slice(1)' \
-        | ndjson-map '{id: d[2], percent: d[0]}' \
+        | ndjson-map '{id: d[1] + d[2], percent: d[0]}' \
         > census-20-to-24.ndjson
     ''')
     os.system('''
